@@ -261,6 +261,35 @@ impl RulesetService {
         let has_input_chain = palisade_table
             .map(|t| t.chains.iter().any(|c| c.name == "input"))
             .unwrap_or(false);
+        let existing_chain_names = palisade_table
+            .map(|t| {
+                t.chains
+                    .iter()
+                    .map(|c| c.name.clone())
+                    .collect::<std::collections::HashSet<_>>()
+            })
+            .unwrap_or_default();
+
+        let mut filtered_ops = Vec::with_capacity(result.changeset.operations.len());
+        for op in result.changeset.operations {
+            match &op {
+                Operation::AddChain {
+                    family,
+                    table,
+                    chain,
+                } if family == "inet"
+                    && table == "palisade"
+                    && existing_chain_names.contains(&chain.name) =>
+                {
+                    result.warnings.push(format!(
+                        "Chain inet/palisade/{} already exists; skipping add-chain operation.",
+                        chain.name
+                    ));
+                }
+                _ => filtered_ops.push(op),
+            }
+        }
+        result.changeset.operations = filtered_ops;
 
         let mut bootstrap = Vec::<Operation>::new();
         if !has_palisade_table {
