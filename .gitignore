@@ -1,0 +1,18 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# Node / frontend
+**/node_modules/
+**/dist/
+.pnpm-store/
+
+# Tauri / local runtime artifacts
+**/*.db
+**/*.db-journal
+**/*.db-shm
+**/*.db-wal
+
+# OS/editor noise
+.DS_Store
+Thumbs.db

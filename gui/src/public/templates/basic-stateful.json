@@ -1,0 +1,14 @@
+{
+  "id": "basic-stateful",
+  "name": "Basic Stateful Firewall",
+  "description": "Allow established/related and local management access",
+  "parameters": {
+    "ssh_port": "22",
+    "mgmt_cidr": "192.168.1.0/24"
+  },
+  "rules": [
+    "ct state { established, related } accept",
+    "ip saddr {{mgmt_cidr}} tcp dport {{ssh_port}} accept",
+    "counter drop"
+  ]
+}

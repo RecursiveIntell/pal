@@ -1,0 +1,65 @@
+{
+  "nftables": [
+    { "metainfo": { "json_schema_version": 1 } },
+    { "table": { "family": "inet", "name": "palisade" } },
+    {
+      "chain": {
+        "family": "inet",
+        "table": "palisade",
+        "name": "input",
+        "type": "filter",
+        "hook": "input",
+        "prio": 0,
+        "policy": "drop"
+      }
+    },
+    {
+      "rule": {
+        "family": "inet",
+        "table": "palisade",
+        "chain": "input",
+        "handle": 10,
+        "comment": "allow established",
+        "expr": [
+          {
+            "match": {
+              "left": { "ct": { "key": "state" } },
+              "op": "in",
+              "right": { "set": ["established", "related"] }
+            }
+          },
+          { "accept": null }
+        ]
+      }
+    },
+    {
+      "rule": {
+        "family": "inet",
+        "table": "palisade",
+        "chain": "input",
+        "handle": 20,
+        "comment": "allow ssh",
+        "expr": [
+          {
+            "match": {
+              "left": { "payload": { "protocol": "tcp", "field": "dport" } },
+              "op": "==",
+              "right": 22
+            }
+          },
+          { "accept": null }
+        ]
+      }
+    },
+    {
+      "rule": {
+        "family": "inet",
+        "table": "palisade",
+        "chain": "input",
+        "handle": 30,
+        "comment": "default reject",
+        "expr": [{ "reject": { "type": "icmpx" } }]
+      }
+    }
+  ]
+}

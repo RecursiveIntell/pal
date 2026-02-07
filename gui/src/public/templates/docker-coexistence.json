@@ -1,0 +1,13 @@
+{
+  "id": "docker-coexistence",
+  "name": "Docker Coexistence",
+  "description": "Do not mutate Docker-owned tables; apply in palisade only",
+  "serviceAware": ["docker"],
+  "parameters": {
+    "bridge_iface": "docker0"
+  },
+  "rules": [
+    "iifname {{bridge_iface}} accept",
+    "ct state established,related accept"
+  ]
+}

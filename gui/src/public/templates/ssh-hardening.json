@@ -1,0 +1,14 @@
+{
+  "id": "ssh-hardening",
+  "name": "SSH Hardening",
+  "description": "Restrict SSH ingress and reject scans",
+  "parameters": {
+    "ssh_port": "22",
+    "trusted_set": "@trusted_admins"
+  },
+  "rules": [
+    "tcp dport {{ssh_port}} ip saddr {{trusted_set}} accept",
+    "tcp dport {{ssh_port}} limit rate 5/minute accept",
+    "tcp dport {{ssh_port}} reject with icmpx type admin-prohibited"
+  ]
+}

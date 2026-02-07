@@ -1,0 +1,25 @@
+[package]
+name = "palisade-daemon"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+palisade-shared = { path = "../shared" }
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+chrono.workspace = true
+sha2.workspace = true
+rand.workspace = true
+zbus.workspace = true
+nftables = "0.6"
+neli = "0.7"
+rmp-serde = "1"
+
+[dev-dependencies]
+pretty_assertions = "1"

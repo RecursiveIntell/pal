@@ -1,0 +1,5 @@
+[D-BUS Service]
+Name=org.palisade.Daemon1
+Exec=/usr/libexec/palisade-daemon
+User=root
+SystemdService=palisade-daemon.service

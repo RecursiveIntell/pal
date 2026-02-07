@@ -1,0 +1,15 @@
+{
+  "id": "web-server",
+  "name": "Web Server",
+  "description": "Expose HTTP/HTTPS, keep SSH restricted",
+  "parameters": {
+    "http_port": "80",
+    "https_port": "443",
+    "ssh_port": "22"
+  },
+  "rules": [
+    "tcp dport { {{http_port}}, {{https_port}} } accept",
+    "tcp dport {{ssh_port}} ct state new accept",
+    "counter reject with icmpx type port-unreachable"
+  ]
+}

@@ -1,0 +1,25 @@
+[package]
+name = "palisade-gui-tauri"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "palisade_gui_tauri"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+palisade-shared = { path = "../../shared" }
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+zbus.workspace = true
+tauri = { version = "2", features = [] }
+rusqlite = { version = "0.33", features = ["bundled"] }
+russh = "0.54"
+rmp-serde = "1"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }

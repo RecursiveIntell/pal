@@ -1,0 +1,14 @@
+{
+  "id": "tailscale-integration",
+  "name": "Tailscale Integration",
+  "description": "Respect tailscale-managed chains and allow ts interface traffic",
+  "serviceAware": ["tailscale"],
+  "parameters": {
+    "tailscale_iface": "tailscale0"
+  },
+  "rules": [
+    "iifname {{tailscale_iface}} accept",
+    "oifname {{tailscale_iface}} accept",
+    "counter"
+  ]
+}
