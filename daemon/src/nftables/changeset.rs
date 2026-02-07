@@ -1,5 +1,6 @@
 use crate::nftables::ownership::detect_table_owner;
 use palisade_shared::{Changeset, Operation, Position, TableOwner};
+use serde_json::{Map, Value};
 
 pub fn changeset_to_nft_batch(changeset: &Changeset) -> anyhow::Result<String> {
     let mut commands = Vec::new();
@@ -14,19 +15,29 @@ pub fn changeset_to_nft_batch(changeset: &Changeset) -> anyhow::Result<String> {
                 family,
                 table,
                 chain,
-            } => serde_json::json!({
-                "add": {
-                    "chain": {
-                        "family": family,
-                        "table": table,
-                        "name": chain.name,
-                        "type": chain.chain_type,
-                        "hook": chain.hook,
-                        "prio": chain.priority,
-                        "policy": chain.policy
-                    }
+            } => {
+                let mut chain_obj = Map::new();
+                chain_obj.insert("family".to_string(), Value::String(family.clone()));
+                chain_obj.insert("table".to_string(), Value::String(table.clone()));
+                chain_obj.insert("name".to_string(), Value::String(chain.name.clone()));
+                if let Some(chain_type) = &chain.chain_type {
+                    chain_obj.insert("type".to_string(), Value::String(chain_type.clone()));
                 }
-            }),
+                if let Some(hook) = &chain.hook {
+                    chain_obj.insert("hook".to_string(), Value::String(hook.clone()));
+                }
+                if let Some(priority) = chain.priority {
+                    chain_obj.insert("prio".to_string(), Value::Number(priority.into()));
+                }
+                if let Some(policy) = &chain.policy {
+                    chain_obj.insert("policy".to_string(), Value::String(policy.clone()));
+                }
+                let mut add_obj = Map::new();
+                add_obj.insert("chain".to_string(), Value::Object(chain_obj));
+                let mut root_obj = Map::new();
+                root_obj.insert("add".to_string(), Value::Object(add_obj));
+                Value::Object(root_obj)
+            }
             Operation::AddRule {
                 family,
                 table,
@@ -201,5 +212,41 @@ fn enforce_ownership(op: &Operation) -> anyhow::Result<()> {
         Ok(())
     } else {
         anyhow::bail!("changeset rejected: operation targets non-palisade table")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use palisade_shared::changeset::ChainSpec;
+
+    #[test]
+    fn add_chain_omits_unset_optional_fields() {
+        let changeset = Changeset {
+            version: 1,
+            description: "test".to_string(),
+            operations: vec![Operation::AddChain {
+                family: "inet".to_string(),
+                table: "palisade".to_string(),
+                chain: ChainSpec {
+                    name: "zone_public".to_string(),
+                    chain_type: None,
+                    hook: None,
+                    priority: None,
+                    policy: None,
+                },
+            }],
+        };
+
+        let batch = changeset_to_nft_batch(&changeset).expect("batch should serialize");
+        let value: serde_json::Value =
+            serde_json::from_str(&batch).expect("batch should be valid json");
+        let chain = &value["nftables"][0]["add"]["chain"];
+
+        assert_eq!(chain["name"], "zone_public");
+        assert!(chain.get("type").is_none());
+        assert!(chain.get("hook").is_none());
+        assert!(chain.get("prio").is_none());
+        assert!(chain.get("policy").is_none());
     }
 }
