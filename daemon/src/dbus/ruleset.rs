@@ -3,7 +3,7 @@ use crate::nftables::engine::NftEngine;
 use crate::nftables::model::RulesetSnapshot;
 use crate::nftables::ownership::detect_table_owner;
 use crate::nftables::summarizer::summarize_expr;
-use crate::safety::anti_lockout::{detect_ssh_sessions, evaluate_lockout_risk};
+use crate::safety::anti_lockout::{detect_ssh_sessions, evaluate_lockout_risk, LockoutRisk};
 use crate::safety::audit::AuditLog;
 use crate::safety::dead_man::DeadManSwitch;
 use crate::safety::snapshots::SnapshotManager;
@@ -127,7 +127,18 @@ impl RulesetService {
         let sessions =
             detect_ssh_sessions().map_err(|e| zbus::fdo::Error::Failed(e.to_string()))?;
         if let Some(risk) = evaluate_lockout_risk(&batch, &sessions) {
-            return Ok((String::new(), format!("anti-lockout warning: {risk}")));
+            match risk {
+                LockoutRisk::Blocking(message) => {
+                    return Ok((String::new(), format!("anti-lockout blocked apply: {message}")));
+                }
+                LockoutRisk::Warning(message) => {
+                    let _ = self
+                        .audit
+                        .lock()
+                        .await
+                        .append("anti_lockout_warning", &message);
+                }
+            }
         }
 
         let current = self

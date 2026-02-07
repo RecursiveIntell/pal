@@ -7,6 +7,13 @@ pub struct SshSession {
     pub peer: String,
 }
 
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub enum LockoutRisk {
+    Warning(String),
+    Blocking(String),
+}
+
 pub fn detect_ssh_sessions() -> anyhow::Result<Vec<SshSession>> {
     let output = Command::new("ss").arg("-tnp").output()?;
     if !output.status.success() {
@@ -32,11 +39,11 @@ pub fn detect_ssh_sessions() -> anyhow::Result<Vec<SshSession>> {
     Ok(sessions)
 }
 
-pub fn evaluate_lockout_risk(_proposed_ruleset: &str, sessions: &[SshSession]) -> Option<String> {
+pub fn evaluate_lockout_risk(_proposed_ruleset: &str, sessions: &[SshSession]) -> Option<LockoutRisk> {
     if sessions.is_empty() {
-        return Some(
+        return Some(LockoutRisk::Warning(
             "No active SSH sessions detected; remote recovery may be unavailable".to_string(),
-        );
+        ));
     }
     None
 }
