@@ -11,6 +11,17 @@ async fn get_proxy<'a>(connection: &'a Connection) -> Result<Proxy<'a>, String> 
     .map_err(|e| e.to_string())
 }
 
+async fn get_services_proxy<'a>(connection: &'a Connection) -> Result<Proxy<'a>, String> {
+    Proxy::new(
+        connection,
+        "org.palisade.Daemon1",
+        "/org/palisade/Daemon1",
+        "org.palisade.Daemon1.Services",
+    )
+    .await
+    .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn list_ruleset() -> Result<String, String> {
     let conn = Connection::system().await.map_err(|e| e.to_string())?;
@@ -120,6 +131,42 @@ pub async fn delete_snapshot(id: String) -> Result<(bool, String), String> {
     let conn = Connection::system().await.map_err(|e| e.to_string())?;
     let p = get_proxy(&conn).await?;
     p.call("DeleteSnapshot", &(id))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_service_rules(service_name: String) -> Result<String, String> {
+    let conn = Connection::system().await.map_err(|e| e.to_string())?;
+    let p = get_services_proxy(&conn).await?;
+    p.call("ListServiceRules", &(service_name))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_all_service_rules() -> Result<String, String> {
+    let conn = Connection::system().await.map_err(|e| e.to_string())?;
+    let p = get_services_proxy(&conn).await?;
+    p.call("ListAllServiceRules", &())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn migrate_firewalld_zones() -> Result<String, String> {
+    let conn = Connection::system().await.map_err(|e| e.to_string())?;
+    let p = get_proxy(&conn).await?;
+    p.call("MigrateFirewalldZones", &())
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn switch_firewalld_to_compat() -> Result<(bool, String), String> {
+    let conn = Connection::system().await.map_err(|e| e.to_string())?;
+    let p = get_proxy(&conn).await?;
+    p.call("SwitchFirewalldToCompat", &())
         .await
         .map_err(|e| e.to_string())
 }

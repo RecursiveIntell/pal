@@ -40,16 +40,23 @@ async fn main() -> anyhow::Result<()> {
         services.clone(),
     );
 
-    let services_iface = ServicesService::new(services.clone(), engine.clone());
+    let services_iface = ServicesService::new(
+        services.clone(),
+        engine.clone(),
+        snapshots.clone(),
+        audit.clone(),
+    )?;
+    let services_iface_for_watch = services_iface.clone();
     let monitor_iface = MonitorService::new(monitor_socket);
 
-    let _conn = zbus::connection::Builder::system()?
+    let conn = zbus::connection::Builder::system()?
         .name("org.palisade.Daemon1")?
         .serve_at("/org/palisade/Daemon1", ruleset_service)?
         .serve_at("/org/palisade/Daemon1", services_iface)?
         .serve_at("/org/palisade/Daemon1", monitor_iface)?
         .build()
         .await?;
+    services_iface_for_watch.spawn_name_owner_watcher(conn.clone());
 
     info!("org.palisade.Daemon1 started");
     tokio::signal::ctrl_c().await?;

@@ -69,17 +69,29 @@ function parseRulesetJson(raw: string): NftTable[] {
       }
       const handle = typeof rule.handle === "number" ? rule.handle : 0;
       const action = detectAction(rule.expr);
+      const comment = typeof rule.comment === "string" ? rule.comment : undefined;
+      const serviceTag = parseServiceTag(comment);
+      const managedByService = serviceTag?.serviceName;
+      const managedRuleId = serviceTag?.ruleId;
       const nftRule: NftRule = {
         handle,
         summary: {
           matches: [],
           action: { type: action },
-          description: typeof rule.comment === "string" ? rule.comment : `${action} rule`,
+          description:
+            managedByService && comment
+              ? `Managed by ${managedByService}: ${comment}`
+              : managedByService
+                ? `Managed by ${managedByService}`
+                : comment ?? `${action} rule`,
         },
         rawExpressions: Array.isArray(rule.expr) ? rule.expr : [],
-        comment: typeof rule.comment === "string" ? rule.comment : undefined,
+        comment,
         position: chain.rules.length,
         isDisabled: false,
+        managedByService,
+        managedRuleId,
+        readOnly: Boolean(managedByService),
       };
       chain.rules.push(nftRule);
     }
@@ -156,4 +168,23 @@ function detectAction(expr: unknown): NftRule["summary"]["action"]["type"] {
     if ("counter" in item) return "counter";
   }
   return "counter";
+}
+
+function parseServiceTag(comment: string | undefined): { serviceName: string; ruleId: string } | undefined {
+  if (!comment) {
+    return undefined;
+  }
+  const match = comment.match(/palisade:service:([^:\s]+):([A-Za-z0-9-]+)/);
+  if (!match) {
+    return undefined;
+  }
+  const serviceName = match[1];
+  const ruleId = match[2];
+  if (!serviceName || !ruleId) {
+    return undefined;
+  }
+  return {
+    serviceName,
+    ruleId,
+  };
 }

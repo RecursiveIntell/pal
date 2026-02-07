@@ -10,6 +10,7 @@ import { SnapshotDiff } from "./components/snapshots/SnapshotDiff";
 import { SnapshotList } from "./components/snapshots/SnapshotList";
 import { TemplateDetail } from "./components/templates/TemplateDetail";
 import { TemplateList } from "./components/templates/TemplateList";
+import { MigrationWizard, type MigrationPreview } from "./components/templates/MigrationWizard";
 import { BandwidthChart } from "./components/traffic/BandwidthChart";
 import { FlowTable } from "./components/traffic/FlowTable";
 import { RuleHitRates } from "./components/traffic/RuleHitRates";
@@ -19,7 +20,7 @@ import { DeadManCountdown } from "./components/shared/DeadManCountdown";
 import { daemonCall } from "./hooks/useDaemon";
 import { useRuleset } from "./hooks/useRuleset";
 import { useTraffic } from "./hooks/useTraffic";
-import { selectedChain, useRulesetStore } from "./stores/ruleset";
+import { selectedChain, selectedRule, useRulesetStore } from "./stores/ruleset";
 import { useTrafficStore } from "./stores/traffic";
 import { useUiStore } from "./stores/ui";
 import type { Changeset, RuleSpec } from "./types/changeset";
@@ -55,6 +56,12 @@ export function App() {
   const [selectedTemplate, setSelectedTemplate] = useState<string | undefined>(undefined);
   const [templateParams, setTemplateParams] = useState<Record<string, string>>({ interface: "eth0", ssh_port: "22" });
   const [templateRendered, setTemplateRendered] = useState("");
+  const [serviceRuleSummary, setServiceRuleSummary] = useState<Record<string, number>>({});
+  const [migrationAvailable, setMigrationAvailable] = useState(false);
+  const [migrationPreview, setMigrationPreview] = useState<MigrationPreview | undefined>(undefined);
+  const [migrationLoading, setMigrationLoading] = useState(false);
+  const [migrationApplying, setMigrationApplying] = useState(false);
+  const [switchCompatAfterConfirm, setSwitchCompatAfterConfirm] = useState(false);
 
   const [snapshots, setSnapshots] = useState<string[]>([]);
   const [selectedSnapshot, setSelectedSnapshot] = useState<string | undefined>(undefined);
@@ -67,12 +74,45 @@ export function App() {
   const trafficLiveCounterDeltas = useTrafficStore((s) => s.liveCounterDeltas);
   const trafficMonitoring = useTrafficStore((s) => s.monitoring);
   const trafficError = useTrafficStore((s) => s.error);
+  const activeRule = useMemo(() => selectedRule(chain, selected?.handle), [chain, selected?.handle]);
+  const readOnlyRuleReason = useMemo(() => {
+    if (chain?.name === "service-rules") {
+      return "Rules in service-rules are managed by external services and are read-only.";
+    }
+    if (activeRule?.managedByService) {
+      return `This rule is managed by ${activeRule.managedByService} and is read-only.`;
+    }
+    return undefined;
+  }, [activeRule?.managedByService, chain?.name]);
 
   useEffect(() => {
     if (view !== "templates") {
       return;
     }
     void daemonCall<string[]>("list_templates").then(setTemplates).catch(() => setTemplates([]));
+  }, [view]);
+
+  useEffect(() => {
+    if (view !== "rules") {
+      return;
+    }
+    void daemonCall<string>("list_all_service_rules")
+      .then((raw) => setServiceRuleSummary(extractServiceRuleSummary(raw)))
+      .catch(() => setServiceRuleSummary({}));
+  }, [tables, view]);
+
+  useEffect(() => {
+    if (view !== "templates") {
+      return;
+    }
+    setMigrationPreview(undefined);
+    setMigrationAvailable(false);
+    void daemonCall<string>("migrate_firewalld_zones")
+      .then((raw) => {
+        const parsed = parseMigrationPreview(raw);
+        setMigrationAvailable(parsed.zone_summaries.length > 0);
+      })
+      .catch(() => setMigrationAvailable(false));
   }, [view]);
 
   useEffect(() => {
@@ -189,6 +229,13 @@ export function App() {
       return;
     }
     await daemonCall<boolean>("confirm_apply", { applyId: lastApplyId });
+    if (switchCompatAfterConfirm) {
+      const [ok, error] = await daemonCall<[boolean, string]>("switch_firewalld_to_compat");
+      if (!ok) {
+        window.alert(`Post-migration service switch failed: ${error}`);
+      }
+      setSwitchCompatAfterConfirm(false);
+    }
     setDeadManSeconds(undefined);
   }
 
@@ -197,7 +244,47 @@ export function App() {
       return;
     }
     await daemonCall<boolean>("rollback_apply", { applyId: lastApplyId });
+    setSwitchCompatAfterConfirm(false);
     setDeadManSeconds(undefined);
+  }
+
+  async function buildMigrationPreview() {
+    setMigrationLoading(true);
+    try {
+      const raw = await daemonCall<string>("migrate_firewalld_zones");
+      const parsed = parseMigrationPreview(raw);
+      setMigrationPreview(parsed);
+      setMigrationAvailable(parsed.zone_summaries.length > 0);
+    } catch (error) {
+      window.alert(`Failed to build migration preview: ${String(error)}`);
+      setMigrationPreview(undefined);
+    } finally {
+      setMigrationLoading(false);
+    }
+  }
+
+  async function applyMigration(changesetJson: string, enableCompatSwitch: boolean) {
+    setMigrationApplying(true);
+    try {
+      const [valid, validationError] = await daemonCall<[boolean, string]>("validate_changeset", { changesetJson });
+      if (!valid) {
+        window.alert(`Migration validation failed: ${validationError}`);
+        return;
+      }
+      const [applyId, applyError] = await daemonCall<[string, string]>("apply_changeset", {
+        changesetJson,
+        timeoutSecs: 60,
+      });
+      if (applyError) {
+        window.alert(`Migration apply failed: ${applyError}`);
+        return;
+      }
+      setLastApplyId(applyId);
+      setDeadManSeconds(60);
+      setSwitchCompatAfterConfirm(enableCompatSwitch);
+    } finally {
+      setMigrationApplying(false);
+    }
   }
 
   async function createSnapshotNow() {
@@ -281,6 +368,7 @@ export function App() {
                 chain={chain}
                 onExportJson={() => downloadTextFile("ruleset.json", JSON.stringify(tables, null, 2))}
                 onExportText={() => downloadTextFile("ruleset.nft", toNftText(tables))}
+                serviceRuleSummary={serviceRuleSummary}
               />
               <div className="min-h-0 flex-1 overflow-auto">
                 <RuleTable
@@ -289,6 +377,9 @@ export function App() {
                   onSelect={selectRule}
                   onReorder={(from, to) => {
                     if (!selected) {
+                      return;
+                    }
+                    if (selected.chain === "service-rules") {
                       return;
                     }
                     reorderRules(selected.family, selected.table, selected.chain, from, to);
@@ -301,6 +392,7 @@ export function App() {
                 </div>
               )}
               <RuleEditor
+                readOnlyReason={readOnlyRuleReason}
                 onSave={(rule: RuleSpec) => {
                   setDraftRule(rule);
                   setPendingRule(rule);
@@ -313,12 +405,29 @@ export function App() {
         {view === "templates" && (
           <>
             <TemplateList templates={templates} selected={selectedTemplate} onSelect={setSelectedTemplate} />
-            <TemplateDetail
-              name={selectedTemplate}
-              rendered={templateRendered}
-              params={templateParams}
-              onChangeParams={setTemplateParams}
-            />
+            <div className="flex min-w-0 flex-1 flex-col overflow-auto p-4">
+              {migrationAvailable && (
+                <div className="mb-4">
+                  <MigrationWizard
+                    migration={migrationPreview}
+                    loading={migrationLoading}
+                    applying={migrationApplying}
+                    onGenerate={() => {
+                      void buildMigrationPreview();
+                    }}
+                    onApply={(changesetJson, enableCompatSwitch) => {
+                      void applyMigration(changesetJson, enableCompatSwitch);
+                    }}
+                  />
+                </div>
+              )}
+              <TemplateDetail
+                name={selectedTemplate}
+                rendered={templateRendered}
+                params={templateParams}
+                onChangeParams={setTemplateParams}
+              />
+            </div>
           </>
         )}
         {view === "traffic" && (
@@ -529,4 +638,30 @@ function prettyJson(raw: string): string {
   } catch {
     return raw;
   }
+}
+
+function extractServiceRuleSummary(raw: string): Record<string, number> {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (typeof parsed !== "object" || parsed === null) {
+      return {};
+    }
+    const out: Record<string, number> = {};
+    for (const [service, entries] of Object.entries(parsed as Record<string, unknown>)) {
+      out[service] = Array.isArray(entries) ? entries.length : 0;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function parseMigrationPreview(raw: string): MigrationPreview {
+  const value = JSON.parse(raw) as Record<string, unknown>;
+  return {
+    changeset: value.changeset ?? {},
+    zone_summaries: Array.isArray(value.zone_summaries) ? (value.zone_summaries as MigrationPreview["zone_summaries"]) : [],
+    warnings: Array.isArray(value.warnings) ? value.warnings.filter((item): item is string => typeof item === "string") : [],
+    nft_preview: typeof value.nft_preview === "string" ? value.nft_preview : "",
+  };
 }

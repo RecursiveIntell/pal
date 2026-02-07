@@ -44,6 +44,9 @@ export interface NftRule {
   position: number;
   tag?: string;
   isDisabled: boolean;
+  managedByService?: string;
+  managedRuleId?: string;
+  readOnly?: boolean;
 }
 
 export interface RuleMatch {

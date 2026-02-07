@@ -1,0 +1,16 @@
+[Unit]
+Description=Palisade firewalld Compatibility Shim
+After=palisade-daemon.service
+Requires=palisade-daemon.service
+Conflicts=firewalld.service
+
+[Service]
+Type=dbus
+BusName=org.fedoraproject.FirewallD1
+ExecStart=/usr/libexec/palisade-firewalld-compat
+Restart=on-failure
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target

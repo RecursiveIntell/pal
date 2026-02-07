@@ -16,6 +16,7 @@ This README documents **current implemented behavior only**.
   - `ListRuleset`, `ListTable`, `GetRuleSummaries`
   - `ValidateChangeset`, `ApplyChangeset`, `ConfirmApply`, `RollbackApply`
   - `ListSnapshots`, `CreateSnapshot`, `GetSnapshot`, `DeleteSnapshot`, `RestoreSnapshot`
+  - `MigrateFirewalldZones`, `SwitchFirewalldToCompat`
 - Safety pipeline on apply:
   - dry-run validation
   - anti-lockout check
@@ -23,12 +24,21 @@ This README documents **current implemented behavior only**.
   - dead-man rollback timer
   - audit log append
 - Service detection and table ownership methods
+- Service registration interface on `org.palisade.Daemon1.Services`:
+  - `RegisterServicePort`, `RegisterServicePortRange`, `RegisterServiceRule`
+  - `DeregisterServiceRule`, `ListServiceRules`, `ListAllServiceRules`
+  - `ServiceRuleChanged` signal
+  - SQLite persistence at `/var/lib/palisade/service-rules.db`
+  - automatic cleanup for temporary registrations on D-Bus owner disconnect
 - Monitor socket server at `/run/palisade/monitor.sock` (MessagePack frames, 1s updates)
 
 ### GUI
 - Rules view:
   - table/chain tree
   - rule table and summaries
+  - service-managed rule badges (`Managed by <service>`)
+  - read-only enforcement for service-managed rules
+  - service-rule summary panel
   - inline rule editor and apply flow
   - dead-man countdown controls (`Keep` / `Rollback`)
 - Traffic view:
@@ -49,6 +59,22 @@ This README documents **current implemented behavior only**.
   - list available templates
   - parameter input form
   - rendered preview
+  - firewalld migration wizard:
+    - zone detection
+    - side-by-side preview (zone config vs generated nft preview)
+    - warnings panel for partial translations
+    - apply via standard validate/apply/dead-man flow
+    - optional post-apply firewalld disable + compat enable
+
+### firewalld Compatibility Shim
+- New optional binary crate: `palisade-firewalld-compat`
+- Owns `org.fedoraproject.FirewallD1` D-Bus name
+- Implements practical firewalld API subset used by common tooling:
+  - zones (`getZones`, `getDefaultZone`, `getActiveZones`)
+  - port/service/rich-rule add/remove
+  - interface zone assignment
+  - runtime lifecycle no-op methods (`reload`, `runtimeToPermanent`, `completeReload`)
+- Translates requests to Palisade daemon service registration API (does not call `nft` directly)
 
 ## Included Templates
 
@@ -110,9 +136,11 @@ sudo systemctl restart dbus-broker.service || sudo systemctl restart dbus.servic
 
 - `packaging/systemd/palisade-daemon.service`
 - `packaging/dbus/org.palisade.Daemon1.conf`
+- `packaging/systemd/palisade-firewalld-compat.service`
+- `packaging/dbus/org.fedoraproject.FirewallD1.conf`
+- `packaging/dbus/org.fedoraproject.FirewallD1.service`
 - `packaging/polkit/org.palisade.daemon1.policy`
 
 ## Notes
 
 - Non-negotiable safety rule enforced: Palisade does **not** flush global ruleset.
-- Some planned firewalld-compat and migration features are not yet implemented in this tree.

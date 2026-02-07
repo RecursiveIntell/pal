@@ -8,8 +8,10 @@ use crate::safety::audit::AuditLog;
 use crate::safety::dead_man::DeadManSwitch;
 use crate::safety::snapshots::SnapshotManager;
 use crate::services::detector::ServiceDetector;
+use crate::services::firewalld_migrate::migrate_firewalld_zones;
 use palisade_shared::{Changeset, RuleSummary};
 use std::collections::HashMap;
+use std::process::Command;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -235,6 +237,47 @@ impl RulesetService {
         match self.engine.apply_text_file(&path).await {
             Ok(_) => Ok((true, String::new())),
             Err(e) => Ok((false, e.to_string())),
+        }
+    }
+
+    async fn migrate_firewalld_zones(&self) -> zbus::fdo::Result<String> {
+        let result =
+            migrate_firewalld_zones().map_err(|e| zbus::fdo::Error::Failed(e.to_string()))?;
+        serde_json::to_string(&result).map_err(|e| zbus::fdo::Error::Failed(e.to_string()))
+    }
+
+    async fn switch_firewalld_to_compat(&self) -> zbus::fdo::Result<(bool, String)> {
+        let disable = Command::new("systemctl")
+            .arg("disable")
+            .arg("--now")
+            .arg("firewalld")
+            .status();
+        match disable {
+            Ok(status) if status.success() => {}
+            Ok(status) => {
+                return Ok((
+                    false,
+                    format!("failed to disable firewalld (exit {})", status),
+                ));
+            }
+            Err(err) => return Ok((false, err.to_string())),
+        }
+
+        let enable = Command::new("systemctl")
+            .arg("enable")
+            .arg("--now")
+            .arg("palisade-firewalld-compat")
+            .status();
+        match enable {
+            Ok(status) if status.success() => Ok((true, String::new())),
+            Ok(status) => Ok((
+                false,
+                format!(
+                    "firewalld disabled, but failed to enable palisade-firewalld-compat (exit {})",
+                    status
+                ),
+            )),
+            Err(err) => Ok((false, err.to_string())),
         }
     }
 

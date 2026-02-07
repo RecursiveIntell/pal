@@ -28,19 +28,28 @@ const columns = [
 function SortableRow({ rule, selected, onSelect }: { rule: NftRule; selected: boolean; onSelect: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: rule.handle });
   const style = { transform: CSS.Transform.toString(transform), transition };
+  const draggableProps = rule.readOnly ? {} : { ...attributes, ...listeners };
 
   return (
     <tr
       ref={setNodeRef}
       style={style}
-      {...attributes}
-      {...listeners}
+      {...draggableProps}
       onClick={onSelect}
-      className={`cursor-move border-b border-slate-800 text-sm ${selected ? "bg-slate-800/80" : "hover:bg-slate-800/50"}`}
+      className={`border-b border-slate-800 text-sm ${
+        rule.readOnly ? "cursor-default" : "cursor-move"
+      } ${selected ? "bg-slate-800/80" : "hover:bg-slate-800/50"}`}
     >
       <td className="px-3 py-2 font-mono text-xs">{rule.handle}</td>
       <td className="px-3 py-2">{rule.summary.description}</td>
-      <td className="px-3 py-2">{rule.summary.action.type}</td>
+      <td className="px-3 py-2">
+        <span className="rounded bg-slate-700/70 px-2 py-1 text-xs">{rule.summary.action.type}</span>
+        {rule.managedByService && (
+          <span className="ml-2 rounded bg-blue-600/30 px-2 py-1 text-xs text-blue-200">
+            Managed by {rule.managedByService}
+          </span>
+        )}
+      </td>
       <td className="px-3 py-2 text-slate-400">{rule.comment ?? ""}</td>
     </tr>
   );
@@ -62,6 +71,12 @@ export function RuleTable({ rules, selectedHandle, onSelect, onReorder }: Props)
         }
         const from = rules.findIndex((r) => r.handle === active);
         const to = rules.findIndex((r) => r.handle === over);
+        if (from >= 0 && rules[from]?.readOnly) {
+          return;
+        }
+        if (to >= 0 && rules[to]?.readOnly) {
+          return;
+        }
         if (from >= 0 && to >= 0) {
           const moved = arrayMove(rules, from, to);
           void moved;
