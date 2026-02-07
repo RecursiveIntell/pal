@@ -9,7 +9,8 @@ use crate::safety::dead_man::DeadManSwitch;
 use crate::safety::snapshots::SnapshotManager;
 use crate::services::detector::ServiceDetector;
 use crate::services::firewalld_migrate::migrate_firewalld_zones;
-use palisade_shared::{Changeset, RuleSummary};
+use palisade_shared::changeset::ChainSpec;
+use palisade_shared::{Changeset, Operation, RuleSummary};
 use std::collections::HashMap;
 use std::process::Command;
 use std::sync::Arc;
@@ -241,8 +242,86 @@ impl RulesetService {
     }
 
     async fn migrate_firewalld_zones(&self) -> zbus::fdo::Result<String> {
-        let result =
+        let mut result =
             migrate_firewalld_zones().map_err(|e| zbus::fdo::Error::Failed(e.to_string()))?;
+
+        let current = self
+            .engine
+            .list_ruleset()
+            .await
+            .map_err(|e| zbus::fdo::Error::Failed(e.to_string()))?;
+        let snapshot = RulesetSnapshot::from_nft_json(&current)
+            .map_err(|e| zbus::fdo::Error::Failed(e.to_string()))?;
+
+        let palisade_table = snapshot
+            .tables
+            .iter()
+            .find(|t| t.family == "inet" && t.name == "palisade");
+        let has_palisade_table = palisade_table.is_some();
+        let has_input_chain = palisade_table
+            .map(|t| t.chains.iter().any(|c| c.name == "input"))
+            .unwrap_or(false);
+
+        let mut bootstrap = Vec::<Operation>::new();
+        if !has_palisade_table {
+            bootstrap.push(Operation::AddTable {
+                family: "inet".to_string(),
+                name: "palisade".to_string(),
+            });
+            result
+                .warnings
+                .push("No inet/palisade table found; migration will create it.".to_string());
+        }
+
+        if !has_input_chain {
+            bootstrap.push(Operation::AddChain {
+                family: "inet".to_string(),
+                table: "palisade".to_string(),
+                chain: ChainSpec {
+                    name: "input".to_string(),
+                    chain_type: Some("filter".to_string()),
+                    hook: Some("input".to_string()),
+                    priority: Some(0),
+                    policy: Some("drop".to_string()),
+                },
+            });
+            result.warnings.push(
+                "No palisade input base chain found; migration will create it.".to_string(),
+            );
+        }
+
+        if !bootstrap.is_empty() {
+            let bootstrap_preview = bootstrap
+                .iter()
+                .filter_map(|op| match op {
+                    Operation::AddTable { family, name } => {
+                        Some(format!("add table {} {}", family, name))
+                    }
+                    Operation::AddChain {
+                        family,
+                        table,
+                        chain,
+                    } => Some(format!("add chain {} {} {}", family, table, chain.name)),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            if !bootstrap_preview.is_empty() {
+                let prefix = format!(
+                    "# Auto-bootstrap for migration\n{}",
+                    bootstrap_preview.join("\n")
+                );
+                result.nft_preview = if result.nft_preview.is_empty() {
+                    prefix
+                } else {
+                    format!("{prefix}\n{}", result.nft_preview)
+                };
+            }
+
+            let mut operations = bootstrap;
+            operations.extend(result.changeset.operations.clone());
+            result.changeset.operations = operations;
+        }
+
         serde_json::to_string(&result).map_err(|e| zbus::fdo::Error::Failed(e.to_string()))
     }
 

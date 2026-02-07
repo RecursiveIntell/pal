@@ -567,20 +567,19 @@ fn build_dnat_expr(port: &ForwardPort) -> Vec<serde_json::Value> {
         .as_deref()
         .and_then(|p| parse_port_range(p))
         .map(|(start, _)| start);
-    let dnat = if let Some(to_addr) = &port.to_addr {
-        serde_json::json!({
-            "dnat": {
-                "addr": to_addr,
-                "port": to_port
-            }
-        })
-    } else {
-        serde_json::json!({
-            "dnat": {
-                "port": to_port
-            }
-        })
-    };
+    let mut dnat_obj = serde_json::Map::new();
+    if let Some(to_addr) = &port.to_addr {
+        dnat_obj.insert("addr".to_string(), serde_json::Value::String(to_addr.clone()));
+    }
+    if let Some(to_port) = to_port {
+        dnat_obj.insert(
+            "port".to_string(),
+            serde_json::Value::Number(serde_json::Number::from(to_port)),
+        );
+    }
+    let dnat = serde_json::json!({
+        "dnat": serde_json::Value::Object(dnat_obj)
+    });
     expr.push(dnat);
     expr
 }
