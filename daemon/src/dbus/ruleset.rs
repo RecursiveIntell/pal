@@ -9,8 +9,8 @@ use crate::safety::dead_man::DeadManSwitch;
 use crate::safety::snapshots::SnapshotManager;
 use crate::services::detector::ServiceDetector;
 use crate::services::firewalld_migrate::migrate_firewalld_zones;
-use palisade_shared::changeset::ChainSpec;
-use palisade_shared::{Changeset, Operation, RuleSummary};
+use palisade_shared::changeset::{ChainSpec, RuleSpec};
+use palisade_shared::{Changeset, Operation, Position, RuleSummary};
 use std::collections::HashMap;
 use std::process::Command;
 use std::sync::Arc;
@@ -129,7 +129,10 @@ impl RulesetService {
         if let Some(risk) = evaluate_lockout_risk(&batch, &sessions) {
             match risk {
                 LockoutRisk::Blocking(message) => {
-                    return Ok((String::new(), format!("anti-lockout blocked apply: {message}")));
+                    return Ok((
+                        String::new(),
+                        format!("anti-lockout blocked apply: {message}"),
+                    ));
                 }
                 LockoutRisk::Warning(message) => {
                     let _ = self
@@ -167,10 +170,11 @@ impl RulesetService {
             .await
             .insert(apply_id.clone(), snapshot_path.clone());
 
-        self.engine
-            .apply_json_batch(&batch)
-            .await
-            .map_err(|e| zbus::fdo::Error::Failed(format!("apply failed: {e}")))?;
+        if let Err(e) = self.engine.apply_json_batch(&batch).await {
+            let _ = self.dead_man.disarm(&apply_id).await;
+            self.apply_snapshots.lock().await.remove(&apply_id);
+            return Ok((String::new(), format!("apply failed: {e}")));
+        }
 
         self.audit
             .lock()
@@ -325,8 +329,47 @@ impl RulesetService {
                     policy: Some("drop".to_string()),
                 },
             });
+            bootstrap.push(Operation::AddRule {
+                family: "inet".to_string(),
+                table: "palisade".to_string(),
+                chain: "input".to_string(),
+                position: Position::Last,
+                rule: RuleSpec {
+                    expr: vec![
+                        serde_json::json!({
+                            "match": {
+                                "left": { "ct": { "key": "state" } },
+                                "op": "==",
+                                "right": { "set": ["established", "related"] }
+                            }
+                        }),
+                        serde_json::json!({ "accept": null }),
+                    ],
+                    comment: Some("palisade:bootstrap:allow-established-related".to_string()),
+                },
+            });
+            bootstrap.push(Operation::AddRule {
+                family: "inet".to_string(),
+                table: "palisade".to_string(),
+                chain: "input".to_string(),
+                position: Position::Last,
+                rule: RuleSpec {
+                    expr: vec![
+                        serde_json::json!({
+                            "match": {
+                                "left": { "meta": { "key": "iifname" } },
+                                "op": "==",
+                                "right": "lo"
+                            }
+                        }),
+                        serde_json::json!({ "accept": null }),
+                    ],
+                    comment: Some("palisade:bootstrap:allow-loopback".to_string()),
+                },
+            });
             result.warnings.push(
-                "No palisade input base chain found; migration will create it.".to_string(),
+                "No palisade input base chain found; migration will create it with baseline loopback and established/related accepts."
+                    .to_string(),
             );
         }
 
@@ -342,6 +385,22 @@ impl RulesetService {
                         table,
                         chain,
                     } => Some(format!("add chain {} {} {}", family, table, chain.name)),
+                    Operation::AddRule {
+                        family,
+                        table,
+                        chain,
+                        rule,
+                        ..
+                    } => Some(format!(
+                        "add rule {} {} {} ...{}",
+                        family,
+                        table,
+                        chain,
+                        rule.comment
+                            .as_ref()
+                            .map(|c| format!(" comment \"{c}\""))
+                            .unwrap_or_default()
+                    )),
                     _ => None,
                 })
                 .collect::<Vec<_>>();
