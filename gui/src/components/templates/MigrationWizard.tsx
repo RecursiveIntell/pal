@@ -20,11 +20,25 @@ interface Props {
   migration?: MigrationPreview;
   loading: boolean;
   applying: boolean;
+  pendingApply: boolean;
+  rollbackSeconds?: number;
   onGenerate: () => void;
   onApply: (changesetJson: string, enableCompatSwitch: boolean) => void;
+  onKeep: () => void;
+  onRollback: () => void;
 }
 
-export function MigrationWizard({ migration, loading, applying, onGenerate, onApply }: Props) {
+export function MigrationWizard({
+  migration,
+  loading,
+  applying,
+  pendingApply,
+  rollbackSeconds,
+  onGenerate,
+  onApply,
+  onKeep,
+  onRollback,
+}: Props) {
   const [step, setStep] = useState<number>(1);
   const [enableCompatSwitch, setEnableCompatSwitch] = useState(false);
 
@@ -137,6 +151,22 @@ export function MigrationWizard({ migration, loading, applying, onGenerate, onAp
           <p className="text-slate-300">
             Apply migration using the standard validate → snapshot → dead man’s switch flow.
           </p>
+          {pendingApply && (
+            <div className="rounded border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200">
+              <div className="font-semibold">Migration staged</div>
+              <div className="mt-1">
+                Auto-rollback in {rollbackSeconds ?? 0}s unless you confirm.
+              </div>
+              <div className="mt-2 flex gap-2">
+                <button type="button" onClick={onKeep} className="rounded bg-emerald-600 px-2 py-1 text-[11px] text-white">
+                  Keep Changes
+                </button>
+                <button type="button" onClick={onRollback} className="rounded bg-rose-600 px-2 py-1 text-[11px] text-white">
+                  Rollback Now
+                </button>
+              </div>
+            </div>
+          )}
           <label className="flex items-center gap-2 rounded border border-slate-700 bg-slate-950 p-2 text-xs">
             <input
               type="checkbox"
@@ -148,7 +178,7 @@ export function MigrationWizard({ migration, loading, applying, onGenerate, onAp
           <div className="flex gap-2">
             <button
               type="button"
-              disabled={applying || !changesetJson}
+              disabled={applying || pendingApply || !changesetJson}
               onClick={() => onApply(changesetJson, enableCompatSwitch)}
               className="rounded bg-blue-600 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
             >

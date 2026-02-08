@@ -74,6 +74,7 @@ export function App() {
   const trafficLiveCounterDeltas = useTrafficStore((s) => s.liveCounterDeltas);
   const trafficMonitoring = useTrafficStore((s) => s.monitoring);
   const trafficError = useTrafficStore((s) => s.error);
+  const pendingApply = Boolean(lastApplyId) && deadManSeconds !== undefined && deadManSeconds > 0;
   const activeRule = useMemo(() => selectedRule(chain, selected?.handle), [chain, selected?.handle]);
   const readOnlyRuleReason = useMemo(() => {
     if (chain?.name === "service-rules") {
@@ -237,6 +238,7 @@ export function App() {
       setSwitchCompatAfterConfirm(false);
     }
     setDeadManSeconds(undefined);
+    setLastApplyId(undefined);
   }
 
   async function rollbackApply() {
@@ -246,6 +248,7 @@ export function App() {
     await daemonCall<boolean>("rollback_apply", { applyId: lastApplyId });
     setSwitchCompatAfterConfirm(false);
     setDeadManSeconds(undefined);
+    setLastApplyId(undefined);
   }
 
   async function buildMigrationPreview() {
@@ -269,6 +272,7 @@ export function App() {
       const [valid, validationError] = await daemonCall<[boolean, string]>("validate_changeset", { changesetJson });
       if (!valid) {
         window.alert(`Migration validation failed: ${validationError}`);
+        setSwitchCompatAfterConfirm(false);
         return;
       }
       const [applyId, applyError] = await daemonCall<[string, string]>("apply_changeset", {
@@ -277,11 +281,16 @@ export function App() {
       });
       if (applyError) {
         window.alert(`Migration apply failed: ${applyError}`);
+        setSwitchCompatAfterConfirm(false);
         return;
       }
       setLastApplyId(applyId);
       setDeadManSeconds(60);
       setSwitchCompatAfterConfirm(enableCompatSwitch);
+      window.alert("Migration staged. Confirm within 60 seconds using Keep Changes.");
+    } catch (error) {
+      setSwitchCompatAfterConfirm(false);
+      window.alert(`Migration apply failed unexpectedly: ${String(error)}`);
     } finally {
       setMigrationApplying(false);
     }
@@ -386,11 +395,6 @@ export function App() {
                   }}
                 />
               </div>
-              {deadManSeconds !== undefined && deadManSeconds > 0 && (
-                <div className="px-4 py-2">
-                  <DeadManCountdown seconds={deadManSeconds} onKeep={keepApply} onRollback={rollbackApply} />
-                </div>
-              )}
               <RuleEditor
                 readOnlyReason={readOnlyRuleReason}
                 onSave={(rule: RuleSpec) => {
@@ -412,11 +416,19 @@ export function App() {
                     migration={migrationPreview}
                     loading={migrationLoading}
                     applying={migrationApplying}
+                    pendingApply={pendingApply}
+                    rollbackSeconds={deadManSeconds}
                     onGenerate={() => {
                       void buildMigrationPreview();
                     }}
                     onApply={(changesetJson, enableCompatSwitch) => {
                       void applyMigration(changesetJson, enableCompatSwitch);
+                    }}
+                    onKeep={() => {
+                      void keepApply();
+                    }}
+                    onRollback={() => {
+                      void rollbackApply();
                     }}
                   />
                 </div>
@@ -511,6 +523,11 @@ export function App() {
           </main>
         )}
       </div>
+      {deadManSeconds !== undefined && deadManSeconds > 0 && (
+        <div className="border-t border-slate-700 bg-slate-950/80 px-4 py-2">
+          <DeadManCountdown seconds={deadManSeconds} onKeep={keepApply} onRollback={rollbackApply} />
+        </div>
+      )}
       <StatusBar />
       <ConfirmDialog
         open={confirmOpen}
