@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "org.palisade.gui",
   "build": {
-    "beforeDevCommand": "cd /home/sikmindz/Coding/pal-codex/gui/src && pnpm dev",
-    "beforeBuildCommand": "cd /home/sikmindz/Coding/pal-codex/gui/src && pnpm build",
+    "beforeDevCommand": "cd ../src && pnpm dev",
+    "beforeBuildCommand": "cd ../src && pnpm build",
     "frontendDist": "../src/dist",
     "devUrl": "http://localhost:1420"
   },

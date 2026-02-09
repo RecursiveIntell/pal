@@ -6,6 +6,7 @@ pub mod ssh;
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
+            commands::ruleset::check_daemon_connection,
             commands::ruleset::list_ruleset,
             commands::ruleset::list_table,
             commands::ruleset::get_rule_summaries,

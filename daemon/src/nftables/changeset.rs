@@ -44,18 +44,19 @@ pub fn changeset_to_nft_batch(changeset: &Changeset) -> anyhow::Result<String> {
                 chain,
                 position,
                 rule,
-            } => serde_json::json!({
-                "add": {
-                    "rule": {
-                        "family": family,
-                        "table": table,
-                        "chain": chain,
-                        "expr": rule.expr,
-                        "comment": rule.comment,
-                        "position": position_to_json(position)
-                    }
+            } => {
+                let mut rule_obj = serde_json::json!({
+                    "family": family,
+                    "table": table,
+                    "chain": chain,
+                    "expr": rule.expr,
+                    "comment": rule.comment
+                });
+                if let Some((key, value)) = position_to_kv(position) {
+                    rule_obj[key] = value;
                 }
-            }),
+                serde_json::json!({"add": {"rule": rule_obj}})
+            }
             Operation::ReplaceRule {
                 family,
                 table,
@@ -88,17 +89,18 @@ pub fn changeset_to_nft_batch(changeset: &Changeset) -> anyhow::Result<String> {
                 chain,
                 handle,
                 position,
-            } => serde_json::json!({
-                "insert": {
-                    "rule": {
-                        "family": family,
-                        "table": table,
-                        "chain": chain,
-                        "handle": handle,
-                        "position": position_to_json(position)
-                    }
+            } => {
+                let mut rule_obj = serde_json::json!({
+                    "family": family,
+                    "table": table,
+                    "chain": chain,
+                    "handle": handle
+                });
+                if let Some((key, value)) = position_to_kv(position) {
+                    rule_obj[key] = value;
                 }
-            }),
+                serde_json::json!({"insert": {"rule": rule_obj}})
+            }
             Operation::AddSet { family, table, set } => serde_json::json!({
                 "add": {
                     "set": {
@@ -178,12 +180,12 @@ pub fn changeset_to_nft_batch(changeset: &Changeset) -> anyhow::Result<String> {
     )?)
 }
 
-fn position_to_json(position: &Position) -> serde_json::Value {
+fn position_to_kv(position: &Position) -> Option<(&'static str, serde_json::Value)> {
     match position {
-        Position::First => serde_json::json!({"index": 0}),
-        Position::Last => serde_json::json!({"index": "last"}),
-        Position::BeforeHandle { handle } => serde_json::json!({"before": handle}),
-        Position::AfterHandle { handle } => serde_json::json!({"after": handle}),
+        Position::First => Some(("index", serde_json::json!(0))),
+        Position::Last => None,
+        Position::BeforeHandle { handle } => Some(("index", serde_json::json!(handle))),
+        Position::AfterHandle { handle } => Some(("index", serde_json::json!(handle))),
     }
 }
 
