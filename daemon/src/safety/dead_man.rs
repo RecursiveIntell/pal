@@ -1,7 +1,7 @@
 use rand::Rng;
 use std::collections::HashMap;
-use std::process::Command;
 use std::sync::Arc;
+use tokio::process::Command;
 use tokio::sync::Mutex;
 
 #[derive(Debug, Clone)]
@@ -34,7 +34,8 @@ impl DeadManSwitch {
             .arg("-j")
             .arg("-f")
             .arg(snapshot_path)
-            .status()?;
+            .status()
+            .await?;
 
         if !status.success() {
             anyhow::bail!("failed to arm dead man switch")
@@ -47,7 +48,11 @@ impl DeadManSwitch {
     pub async fn disarm(&self, apply_id: &str) -> anyhow::Result<bool> {
         let unit = self.units.lock().await.remove(apply_id);
         if let Some(unit) = unit {
-            let status = Command::new("systemctl").arg("stop").arg(unit).status()?;
+            let status = Command::new("systemctl")
+                .arg("stop")
+                .arg(unit)
+                .status()
+                .await?;
             return Ok(status.success());
         }
         Ok(false)

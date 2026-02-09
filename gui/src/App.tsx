@@ -17,7 +17,7 @@ import { RuleHitRates } from "./components/traffic/RuleHitRates";
 import { TopTalkers } from "./components/traffic/TopTalkers";
 import { ConfirmDialog } from "./components/shared/ConfirmDialog";
 import { DeadManCountdown } from "./components/shared/DeadManCountdown";
-import { daemonCall } from "./hooks/useDaemon";
+import { daemonCall, useDaemonConnection } from "./hooks/useDaemon";
 import { useRuleset } from "./hooks/useRuleset";
 import { useTraffic } from "./hooks/useTraffic";
 import { selectedChain, selectedRule, useRulesetStore } from "./stores/ruleset";
@@ -27,6 +27,7 @@ import type { Changeset, RuleSpec } from "./types/changeset";
 import type { NftTable } from "./types/nftables";
 
 export function App() {
+  useDaemonConnection();
   useRuleset();
   const view = useUiStore((s) => s.view);
   const trafficRefreshMs = useUiStore((s) => s.trafficRefreshMs);
@@ -583,7 +584,10 @@ function toDaemonChangeset(cs: Changeset): Record<string, unknown> {
           table: op.table,
           chain: op.chain,
           handle: op.handle,
-          rule: { expr: [], comment: op.rule.comment },
+          rule: {
+            expr: op.rule.matches.map((m) => ({ match: { left: m.field, op: m.operator, right: m.value } })),
+            comment: op.rule.comment,
+          },
         };
       }
       return {

@@ -12,8 +12,8 @@ use crate::services::firewalld_migrate::migrate_firewalld_zones;
 use palisade_shared::changeset::{ChainSpec, RuleSpec};
 use palisade_shared::{Changeset, Operation, Position, RuleSummary};
 use std::collections::HashMap;
-use std::process::Command;
 use std::sync::Arc;
+use tokio::process::Command;
 use tokio::sync::Mutex;
 
 #[derive(Clone)]
@@ -125,7 +125,7 @@ impl RulesetService {
             .map_err(|e| zbus::fdo::Error::Failed(format!("dry-run failed: {e}")))?;
 
         let sessions =
-            detect_ssh_sessions().map_err(|e| zbus::fdo::Error::Failed(e.to_string()))?;
+            detect_ssh_sessions().await.map_err(|e| zbus::fdo::Error::Failed(e.to_string()))?;
         if let Some(risk) = evaluate_lockout_risk(&batch, &sessions) {
             match risk {
                 LockoutRisk::Blocking(message) => {
@@ -429,7 +429,8 @@ impl RulesetService {
             .arg("disable")
             .arg("--now")
             .arg("firewalld")
-            .status();
+            .status()
+            .await;
         match disable {
             Ok(status) if status.success() => {}
             Ok(status) => {
@@ -445,7 +446,8 @@ impl RulesetService {
             .arg("enable")
             .arg("--now")
             .arg("palisade-firewalld-compat")
-            .status();
+            .status()
+            .await;
         match enable {
             Ok(status) if status.success() => Ok((true, String::new())),
             Ok(status) => Ok((

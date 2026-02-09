@@ -1,6 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { daemonCall } from "./useDaemon";
 import { useRulesetStore } from "../stores/ruleset";
+import { useUiStore } from "../stores/ui";
 import type { NftRule, NftTable } from "../types/nftables";
 
 function parseRulesetJson(raw: string): NftTable[] {
@@ -102,14 +103,39 @@ function parseRulesetJson(raw: string): NftTable[] {
 
 export function useRuleset() {
   const setTables = useRulesetStore((s) => s.setTables);
+  const daemonConnected = useUiStore((s) => s.daemonConnected);
+  const retryRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
-    void (async () => {
-      const raw = await daemonCall<string>("list_ruleset");
-      const tables = parseRulesetJson(raw);
-      setTables(tables);
-    })();
-  }, [setTables]);
+    let cancelled = false;
+
+    const fetchRuleset = async () => {
+      try {
+        const raw = await daemonCall<string>("list_ruleset");
+        if (!cancelled) {
+          const tables = parseRulesetJson(raw);
+          setTables(tables);
+        }
+      } catch {
+        if (!cancelled) {
+          retryRef.current = window.setTimeout(() => {
+            void fetchRuleset();
+          }, 3_000);
+        }
+      }
+    };
+
+    if (daemonConnected) {
+      void fetchRuleset();
+    }
+
+    return () => {
+      cancelled = true;
+      if (retryRef.current !== undefined) {
+        window.clearTimeout(retryRef.current);
+      }
+    };
+  }, [setTables, daemonConnected]);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

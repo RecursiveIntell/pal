@@ -1,4 +1,4 @@
-use std::process::Command;
+use tokio::process::Command;
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -14,8 +14,8 @@ pub enum LockoutRisk {
     Blocking(String),
 }
 
-pub fn detect_ssh_sessions() -> anyhow::Result<Vec<SshSession>> {
-    let output = Command::new("ss").arg("-tnp").output()?;
+pub async fn detect_ssh_sessions() -> anyhow::Result<Vec<SshSession>> {
+    let output = Command::new("ss").arg("-tnp").output().await?;
     if !output.status.success() {
         anyhow::bail!("ss -tnp failed")
     }

@@ -1,3 +1,4 @@
+use super::ruleset::get_connection;
 use std::sync::OnceLock;
 use std::time::Duration;
 use tokio::io::AsyncReadExt;
@@ -30,7 +31,7 @@ async fn monitor_proxy(connection: &Connection) -> Result<zbus::Proxy<'_>, Strin
 
 #[tauri::command]
 pub async fn get_monitor_socket_path() -> Result<String, String> {
-    let conn = Connection::system().await.map_err(|e| e.to_string())?;
+    let conn = get_connection().await?;
     let proxy = monitor_proxy(&conn).await?;
     proxy
         .call("GetMonitorSocketPath", &())
@@ -40,7 +41,7 @@ pub async fn get_monitor_socket_path() -> Result<String, String> {
 
 #[tauri::command]
 pub async fn start_monitoring() -> Result<bool, String> {
-    let conn = Connection::system().await.map_err(|e| e.to_string())?;
+    let conn = get_connection().await?;
     let proxy = monitor_proxy(&conn).await?;
     proxy
         .call("StartMonitoring", &())
@@ -50,7 +51,7 @@ pub async fn start_monitoring() -> Result<bool, String> {
 
 #[tauri::command]
 pub async fn stop_monitoring() -> Result<bool, String> {
-    let conn = Connection::system().await.map_err(|e| e.to_string())?;
+    let conn = get_connection().await?;
     let proxy = monitor_proxy(&conn).await?;
     let stopped: bool = proxy
         .call("StopMonitoring", &())
