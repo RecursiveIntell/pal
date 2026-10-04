@@ -144,4 +144,4 @@ Changing system-bus policy or restarting the system bus is a host-level operatio
 
 - The project rule is to avoid global ruleset flushes and restrict changes to owned tables. Preserve that invariant when changing apply, snapshot or compatibility paths, and verify it with tests rather than relying on this sentence.
 - The firewalld compatibility service implements a subset, including no-op lifecycle methods; it is not a drop-in claim of complete firewalld behavior.
-- Workspace manifests declare GPL-3.0.
+- Workspace manifests declare GPL-3.0; this checkout has no standalone `LICENSE` file.
